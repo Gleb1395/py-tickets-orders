@@ -1,4 +1,5 @@
-from django.db.models import Q
+from django.db import connection, reset_queries
+from django.db.models import Q, Count, F, Prefetch
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 
@@ -76,6 +77,8 @@ class MovieSessionViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == "list":
+            self.queryset = (self.queryset.select_related()
+                             .annotate(tickets_available=F("movie_session__cinema_hall__capacity") - Count("tickets")))
             return MovieSessionListSerializer
 
         if self.action == "retrieve":
@@ -109,10 +112,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = self.queryset.filter(user=user)
         if self.action == "list":
-            queryset = queryset.prefetch_related(
-                "tickets__movie_session__cinema_hall",
-                "tickets__movie_session__movie",
-            )
+            tickets_qs = Ticket.objects.select_related("movie_session__cinema_hall", "movie_session__movie")
+            queryset = queryset.prefetch_related(Prefetch("tickets", queryset=tickets_qs))
+            # queryset = queryset.prefetch_related(
+            #     "tickets__movie_session__cinema_hall",
+            #     "tickets__movie_session__movie",
+            # )
             return queryset
         return queryset
 
